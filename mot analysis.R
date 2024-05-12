@@ -4,7 +4,10 @@ Crash_data <- read.csv("C:/Users/jones/Downloads/Crash_Analysis_System_(CAS)_dat
 Population_nz <- read_excel("C:/Users/jones/OneDrive/Documents/Pop_NZ.xlsx")
 #factors contributing to crashed percentages
 
-nz_2022_region <- read.csv("C:/Users/jones/Downloads/regional_council_2022_csv.csv")
+#nz_2022_region <- read.csv("C:/Users/jones/Downloads/regional_council_2022_csv.csv")
+
+#regional data as shapefile
+nz_2022_region <- st_read("C:/Users/jones/Downloads/statsnz-regional-council-2022-generalised-SHP/regional-council-2022-generalised.shp")
 
 
 #data info - investigating data
@@ -24,7 +27,7 @@ Crash_data %>% tabyl(weatherB)
 Crash_data %>% tabyl(tree)
 Crash_data %>% tabyl(strayAnimal)
 Crash_data %>% tabyl(slipOrFlood)
-Crash_data %>% tabyl(roadMarkings)
+
 Crash_data %>% tabyl(roadworks)
 Crash_data %>% tabyl(guardRail)
 Crash_data %>% tabyl(trafficIsland)
@@ -45,10 +48,12 @@ library(tidyverse)
 library(RColorBrewer)
 
 # plot with XY coordinates
-#map_1 <- ggplot(Crash_data, aes(x = X, y = Y)) +
-#  geom_point() +
-#  labs(title = "XY Coordinate Plot") 
+Crash_data %>% filter(crashYear == "2022") %>% ggplot(aes(x = X, y = Y)) +
+ geom_point(pch = 10, col = "blue") +
+ labs(title = "XY Coordinate Plot")
 #too much data
+
+#fatal.. over years etc.
 
 
 # Leaflet map
@@ -61,33 +66,32 @@ leaflet(Crash_data) %>%
 pop_2022 <- Population_nz %>% dplyr::select(Area, `2022`) %>% rename("region" = "Area", "population" = "2022")
 
 fatal_2022 <- Crash_data %>% filter(crashYear == "2022", crashSeverity == "Fatal Crash", (!(region == ""))) %>% 
-  tabyl(region) %>% left_join(pop_2022) %>% mutate(deaths_per_100k = n/population*100000) %>% data.frame()
-  
-# Merge shapefile with death data by region name
-fatal_2022 <- merge(nz_2022_region, fatal_2022, by.x = "REGC2022_V1_00_NAME", by.y = "region", all.x = TRUE)
-fatal_2022 <- st_as_sf(fatal_2022)
+  tabyl(region) %>% left_join(pop_2022) %>% mutate(deaths_per_100k = n/population*100000) %>% data.frame() 
 
-# Ensure that the merged object is of class sf
-#if (!inherits(fatal_2022, "sf")) {
-#  fatal_2022 <- st_as_sf(fatal_2022)
-#}
+#nice table 
+#region and Fatal Crashes per 100,000 people 
+
+
+# Merge shapefile with fatal crashes data by region name
+fatal_2022 <- merge(nz_2022_region, fatal_2022, by.x = "REGC2022_1", by.y = "region", all.x = TRUE)
+fatal_2022 <- st_as_sf(fatal_2022)
+fatal_2022_geographic <- st_transform(fatal_2022, crs = st_crs(4326))
 
 #map
 color_palette <- colorRampPalette(brewer.pal(9, "Blues"))
 
-leaflet() %>%
+leaflet_object <- leaflet() %>%
   addProviderTiles("OpenStreetMap.Mapnik") %>%
-  addPolygons(data = fatal_2022, 
+  addPolygons(data = fatal_2022_geographic, 
               fillColor = ~color_palette(100)[cut(deaths_per_100k, breaks = 100)], 
               fillOpacity = 0.8,
               weight = 1,
               color = "black",
-              popup = ~paste("Region:", region, "<br>",
-                             "Deaths per 100,000:", deaths_per_100k)) #%>%
-  
+              popup = ~paste("Region:", REGC2022_1, "<br>",
+                             "Deaths per 100,000:", deaths_per_100k)) #%>% 
 addLegend(position = "bottomright", 
             pal = colorNumeric(palette = color_palette(100), 
-                               domain = fatal_2022$deaths_per_100k),
+                               domain = fatal_2022_geographic$deaths_per_100k),
             values = ~deaths_per_100k,
             title = "Deaths per 100,000",
             opacity = 0.8)
